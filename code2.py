@@ -7,11 +7,16 @@ Created on Thu Feb 16 09:00:38 2017
 import os
 #import glob # like list.files()
 import pandas as pd;
-
+import numpy as np
+import operator
 import re
 import string
 import nltk
+
 #nltk.download("stopwords")  #only one time
+from nltk.stem import WordNetLemmatizer
+from nltk.tokenize import word_tokenize
+from nltk import pos_tag
 from nltk.corpus import stopwords
 from nltk.stem.snowball import SnowballStemmer
 from sklearn.feature_extraction.text import CountVectorizer
