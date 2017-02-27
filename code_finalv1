@@ -1,0 +1,275 @@
+import os
+import csv
+import sys
+import re
+import string
+import nltk
+import codecs
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+%matplotlib inline
+
+
+from nltk.corpus import stopwords
+from nltk import pos_tag
+from nltk.tokenize import word_tokenize
+from nltk.stem import PorterStemmer, WordNetLemmatizer
+from nltk import bigrams 
+from nltk.stem.snowball import SnowballStemmer
+from nltk.corpus import wordnet as wn
+
+#from nltk.stem.wordnet import WordNetLemmatizer
+#from nltk import PorterStemmer
+from sklearn import feature_extraction
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.cluster import KMeans
+from sklearn.externals import joblib
+
+# import mpld3
+
+def removeTAGS(x):
+    x = re.sub(r'\s+',r' ',x)
+    x = re.sub('<code>.*?code>', r' ', x)
+    x = re.sub('<.*?>', r' ', x)
+    return(x)
+    
+def removeUrls(x):
+    x = x.lower()
+    x = re.sub('http.*?\s', r' ', x)
+    return(x)
+
+def removePunctuation(x):
+    x = x.lower()
+    x = re.sub(r'[^\x00-\x7f]',r' ',x) #For Characters like Â
+    x = re.sub(r'\s+',r' ',x) #Multiple Spaces, tabs, carriage returns to single space
+    return re.sub("["+string.punctuation+"]", " ", x)
+
+
+def removeNos(x):
+    x = re.sub(r'[^a-z\s]', r' ', x)
+    x = re.sub(r'\s+',r' ',x)
+    x = re.sub(r'(\s\w{1,2})+\s', r' ',x)
+    x = re.sub(r'\s+',r' ',x)
+    return(x)
+    
+stops = set(stopwords.words("english"))
+stops.update(["would", "get", "like", "likely", "using", "know", "question", "use", "get", "possible" , "much", "find", "anyone"])
+stops.update(["tell", "know", "another", "various", "also", "etc", "around", "vs", "used", "could", "without", "way", "new"])
+stops.update(["need", "known", "make", "makes", "made", "file", "downloaded", "download", "one", "two", "even", "far", "thus"])
+stops.update(["every", "said", "call", "tell", "tells", "called", "per", "though", "less","since", "problem", "answer", "answers"])
+stops.update(["small", "vast","therefore", "must", "simply", "put", "less", "true", "talk", "said", "per", "related"])
+stops.update(["need", "needed", "variety", "cause", "causes", "later", "unrelated", "entire", "saying", "give", "gave", "false"])         
+stops.update(["show", "shows", "however", "previous", "previously", "average", "mean", "think", "thought", "little", "according"])
+stops.update(["number", "view", "views", "viewed", "send", "sent", "may", "might", "right", "wrong", "high", "low" ])
+stops.update(["min", "see", "saw", "sees", "someone", "please", "explain", "explains", "text", "texts", "indicate", "indicates"])              
+stops.update(["begin", "began", "take", "taken", "array", "arrive", "conclusion", "conclusions", "hline", "amp", "edit", "end"])
+stops.update(["thank", "thanks", "assistance", "end", "error", "left", "right", "suppose", "sample", "given", "best", "guess"])
+stops.update(["figure", "matlab", "parameters", "parameter","paper", "papers","whether", "understand",  "quite", "work", "work"]) 
+stops.update(["clears", "obtain", "obtains", "obtained", "form", "forms", "find", "found", "example", "examples"])
+stops.update(["better", "nothing", "different", "well", "say", "says", "seem", "huge", "large", "definition", "meaning"])
+stops.update(["larger", "many", "seems", "pretty", "large", "never", "big", "bigger", "yet", "detail", "details", "nbsp"])
+stops.update(["cdot", "vec", "table", "thing", "either", "wait", "overview", "something", "else", "came", "across"])
+stops.update(["wikipedia", "article", "feel", "free", "stack", "exchange", "quick", "google", "anything", "read", "wiki"])
+stops.update(["appreciate", "help", "got", "thin", "thinking", "scholar", "several", "times", "currently", "working", "studied"])
+stops.update(["really", "want", "text", "sure", "correct", "simple", "language", "wanted", "ask", "read", "lot", "takes"])
+stops.update(["let", "consider", "year", "years", "ago", "long", "term"])
+#
+stops.update(["look", "looks", "looked", "case", "cases", "wonder", "wondering", "come", "comes", "change", "changes", "changing" ])
+stops.update(["look","changed", "differ", "effect", "follow", "function", "happen", "inform", "look", "peopl", "produc" ])
+stops.update(["process","read", "studi", "reason", "inform", "result", "similar", "time", "type"])
+stops.update(["abl", "actual", "alway", "amount", "appear", "back", "becom", "book", "clear", "common", "compar", "contain"])
+stops.update(["determin", "develop", "due", "contain", "exact", "explan", "express", "first", "general", "good", "idea", "identifi"])
+stops.update(["includ", "increas", "interest", "kind", "learn", "lead", "link", "level", "measur", "method", "name", "often"])
+stops.update(["place", "point", "rather", "provid", "refer", "respons", "search", "seen", "select", "requir", "relat", "recent"])
+stops.update(["start", "still", "within", "certain", "complet", "research", "day", "enough", "least", "direct", "test"])
+stops.update(["base", "exist", "factor", "grow", "live", "mormal", "occur", "order","suggest", "present", "part", "particular"])
+stops.update(["via","word", "whole", "valu", "usual", "turn", "total", "step", "sourc", "sort", "size", "side", "short", "set"])
+stops.update(["second", "run", "remov", "regard", "possibl", "perhap", "note", "move", "mayb", "main", "lower", "list"])
+stops.update(["keep", "last", "involv", "insid", "import", "higher", "go", "group", "generat", "fact", "expect", "done"])
+stops.update(["obvious","origin","popul", "pathway", "creat", "assum", "allow", "advantag", "caus", "color", "creat", "defin"])
+stops.update(["describ", "consid", "avail", "condit", "confus", "depend", "eat", "heard", "instead", "length", "locat", "multipl"])
+stops.update(["limit", "imagin", "cours", "area", "depend"])
+stops.update(["curious","close", "believ", "alreadi", "affect", "tri"])
+stops.update(["advanc", "bind", "bit", "calcul", "code", "mention", "observ", "tri", "theori", "rate", "non", "notic", ])
+stops.update(["individu", "infec", "normal", "pair", "perform", "physic", "pictur", "post", "probabl", "posit", "specif", "theori"])
+stops.update(["comput", "state", "analysi", "addit", "activ", "concentr", "control", "current", "cycl", "evid", "imag"])
+stops.update(["infect", "interact", "line", "singl", "signific", "surviv"])
+stops.update(["abil", "act", "action", "add", "age", "almost", "along", "altern", "although", "among", "appreci", "background"])
+stops.update(["appli", "associ", "basic", "behind", "carri", "complex", "concept", "continu", "cross", "cut", "damag"])
+stops.update(["decreas", "detect", "discuss", "effic", "especi", "estim", "ever", "experience", "experiences", "extract"])
+stops.update(["format", "great", "hard", "hope", "hour", "initi", "issu", "lack", "leav", "longer", "materi", "near", "next"])
+stops.update(["old", "open", "outsid", "page", "pass", "prefer", "pressur", "product", "reach", "real", "red", "releas"])
+stops.update(["remain", "rest", "sampl", "separ", "site", "sometim", "stop", "strand", "strong", "subject", "three", "today"])
+stops.update(["togeth", "topic", "trait", "transcript", "typic", "white", "target", "subject","solut","sound"])
+stops.update(["claim", "connect", "effici", "frequenc", "instanc", "knowledg", "lab", "negat", "pattern", "necessari", "matter"])
+stops.update(["life", "negat", "period", "purpos", "random", "rang","reduc", "regul", "replic", "variat", "light", "kill"])
+stops.update(["prevent", "standard", "role", "signal"])
+stops.update(["ad","align", "appar", "applic", "approach", "approxim", "arbitrari", "argument", "assumpt", "away", "attract","axi"])
+stops.update(["ball", "axi", "basi", "boundari", "break"])
+stops.update(["center", "coeffici", "combin", "compon", "conduct", "consist", "constant", "construct", "context", "coordin", "correspond", "cos"])
+stops.update(["definit", "degree",  "deriv", "diagram" "dimens", "dimension", "distanc", "distribut", "dot", "drop"])
+stops.update(["easi", "emit", "equal", "equival", "event", "everyth", "expand", "expans", "extern"])
+stops.update(["fall", "faster", "final", "finit", "fix", "flow", "formula", "frac", "frame", "full", "fundament"])
+stops.update(["goe", "greater", "ground"])
+stops.update(["hat", "half", "hbar", "hit", "hand", "height", "henc",  "hold", "horizont"])
+stops.update(["ideal", "ident", "ignor", "impli", "independ", "infti", "infinit", "int", "integr", "intern", "intrepret", "introduc", "intuit", "invari"])
+stops.update(["lang", "local"])
+stops.update(["mass", "math", "mathbf", "mathcal", "mathemat", "mathrm","matrix", "maximum",  "miss", "metric"])
+stops.update([ "nabla", "natur", "net"])
+stops.update([ "object", "omega", "oper", "opposit"])
+stops.update(["parallel", "partial", "path", "perfect", "perpendicular", "phase", "phi", "precis", "predict", "propag",  "proper", "properti", "prove", "psi", "pull", "pure"])
+stops.update(["qft", "quantiti"])
+stops.update(["radius", "rangl", "ray", "reflect", "relationship", "repres", "represent", "respect", "rho", "rightarrow", "rotat", "rule"])
+stops.update(["satisfi", "scalar", "scale", "scatter", "section", "sens", "shape", "shown", "sigma" , "sin", "situat", "smaller", "solid", "solv", "somehow"])
+stops.update(["special", "sphere", "spheric", "spin", "sqrt", "squar", "star", "statement", "stationari", "straight", "sum", "sun", "suppos", "surfac","symmetri"])
+stops.update(["textbook", "theorem", "theoret", "theta", "top", "toward", "travel", "troubl"])
+stops.update(["uniform", "unit", "valid", "variabl", "vector", "vertic", "voltag"])
+stops.update(["wavelength", "weight", "write", "written", "yes", "zero"])
+stops.update(["acceler", "account", "air", "amplitud", "angl", "angular", "attempt", "bar", "beam", "bodi"])
+stops.update(["degre", "diagam", "dimens", "engineer", "engineers", "engineered", "enginering"])
+stops.update(["engineered", "epsilon", "gas", "inerpret", "law", "magnitud", "moment", "momentum", "plane", "project", "radiat", "structur", "transfer"])
+stops.update(["transform", "transformation", "transformations", "transformed", "transforming", "transformational"])
+stops.update(["transformative", "transformable", "univerity", "universities", "universally", "vari", "wire", "vacuum"])
+stops.update(["collis", "curv",  "delta", "densiti",  "equat", "gaug", "langl", "proof",  "principl", "proport", "volum", "wave"])
+stops.update(["curve", "curved", "curves", "curv", "curving", "density", "densities",  "diagram", "diagrams", "diagrammed"])
+stops.update(["diagramed", "dynamics", "dynamical", "dynamic", "dynamically", "elemental", "forcefully", "forceful"])
+stops.update(["forcings", "interpretation", "interpret", "interpretated", "interpreted",  "interpretations", "interpreting"])
+stops.update(["interprets", "interprete", "interpretational", "interpretate", "interpretable", "interpretated"]) 
+stops.update(["interpretted", "interpretive", "interpretationally", "interpretating", "interpreter", "interpretes"])
+stops.update(["lagrangian", "lagrangians", "lambda", "lambdas", "mechanism", "mechanisms", "principle", "principles","principled"])
+stops.update(["proof", "proofs", "proofing", "proofed", "proportion", "proportionality", "proportional"])
+stops.update(["proportionally", "proportions", "proportionalities","proportioning", "world", "worldly", "worlds"])
+stops.update(["water","volume", "volumes", "volumic", "volum"])
+stop_words = pd.DataFrame(list(stops), columns = ["words"])
+stop_words = stop_words.sort_values(['words'])
+stop_words.to_csv("stop_words.csv", index= False)
+#stop_words.sort_values(['frequency'], ascending=[False])
+
+def removeStopwords(x):
+    # Removing all the stopwords
+    filtered_words = [word for word in x.split() if word not in stops]
+    return " ".join(filtered_words)
+
+def similarity2(w1, w2):
+    synsets1 = wn.synsets(w1)
+    synsets2 = wn.synsets(w2)
+    sim_scores = []
+    for synset1 in range(len(synsets1)):
+        for synset2 in range(len(synsets2)):
+            if (synsets1[synset1].path_similarity(synsets2[synset2]) != None) \
+            and synsets1[synset1].path_similarity(synsets2[synset2]) >= 0.5 :
+                sim_scores.append(synsets1[synset1].path_similarity(synsets2[synset2]))
+    #print(sim_scores)
+    if len(sim_scores) == 0:
+        return 0
+    else:
+        return 1
+        
+
+biology = pd.read_csv("test.csv")
+biology['combine'] = " " + biology['title'] + " " + biology['content'] + " "
+biology['combiny'] = biology['combine'].map(removeTAGS)
+biology['combiny'] = biology['combiny'].map(removeUrls)
+biology['combiny'] = biology['combiny'].map(removePunctuation)
+biology['combiny'] = biology['combiny'].map(removeNos)
+biology['combiny'] = biology['combiny'].map(removeStopwords)
+#biology["tag_list"] = biology["tags"].map(lambda x: x.split())
+#tags = biology["tag_list"].tolist()
+#all_tags = [j for i in range(len(tags)) for j in tags[i]]
+#count = pd.DataFrame(all_tags, columns=["word"])
+#count1 = count.groupby(["word"]).size().reset_index(name='count')
+#count1.sort_values(by=["count"], inplace = True, ascending = False)
+stemmer = SnowballStemmer("english")
+combiny = biology['combiny'].tolist()
+
+def tokenize_and_stem(text):
+    tokens = [token for sent in nltk.sent_tokenize(text) for token in nltk.word_tokenize(sent)]
+    filtered_tokens = []
+    
+    for token in tokens:
+        if re.search(r'[a-zA-Z]',token):
+            filtered_tokens.append(token)
+    stems = [stemmer.stem(t) for t in filtered_tokens]      
+    return stems
+
+def tokenize_only(text):
+    tokens = [ token for sent in nltk.sent_tokenize(text) for token in nltk.word_tokenize(sent)]
+    filtered_token = []
+    
+    for token in tokens:
+        if re.search(r'[a-zA-Z]', token):
+            filtered_token.append(token)
+    return filtered_token
+
+filtered_text=[]
+stemmed_text = []
+for i in combiny:
+    stemmed_text.extend(tokenize_and_stem(i))
+    filtered_text.extend(tokenize_only(i))
+
+stemmed_dict = pd.DataFrame({'stem':stemmed_text, 'word':filtered_text})
+stemmed_dict_freq = stemmed_dict.groupby(["stem","word"]).size().reset_index(name='count')
+stemmed_dict_freq["length"] = stemmed_dict_freq["word"].apply(len)
+stemmed_dict_freq.sort_values(by = ["count","length"], inplace= True, ascending = [False, False] )
+stemmed_dict_freq.iloc[0:4,:]
+
+k = stemmed_dict_freq.set_index(["stem"])
+def fa(x):
+    if type(x) == type("word") :
+        return([x])
+    else:
+        return x.tolist()
+k_1 = {w : fa(k.ix[w,0]) for w in set(stemmed_text)}
+#k_1["tri"]
+
+lookup = stemmed_dict_freq.groupby(["stem"]).first().reset_index()
+lookup2 = lookup.set_index(["stem"])
+#lookup2.drop()
+
+tfidf_vectorizer = TfidfVectorizer(max_df=0.8, max_features=200000,
+                                 min_df=0.015, stop_words=stops,
+                                 use_idf=True, tokenizer=tokenize_and_stem, ngram_range=(0,1))
+
+%time tfidf_matrix = tfidf_vectorizer.fit_transform(combiny) #fit the vectorizer to content
+
+#print(tfidf_matrix.shape)
+terms = tfidf_vectorizer.get_feature_names()
+#type(terms)
+#terms
+#terms.apply(lambda x: lookup2.ix[terms[x]]['word'])
+words = [lookup2.ix[terms[x]]['word'] for x in range(len(terms))]
+#words
+
+for a in terms:
+    print(a, k_1[a])
+
+num_clusters = 100;
+km = KMeans(n_clusters = num_clusters)
+%time km.fit(tfidf_matrix)
+clusters = km.labels_.tolist()
+joblib.dump(km,  'doc_cluster.pkl')
+order_centroids = km.cluster_centers_.argsort()[:,::-1]
+m = pd.Series(clusters)
+biology["cluster"] = m.values
+def top_words(x):
+    ind = order_centroids[x,:6].tolist()
+    list = []
+    for inw in ind:
+        list.append(lookup2.ix[terms[inw]]['word'])
+    return list
+
+def top_stemmed(x):
+    ind = order_centroids[x,:6].tolist()
+    return [terms[inw] for inw in ind]
+    
+for i in range(num_clusters):
+    print(i)
+    print(top_words(i))
+    print(top_stemmed(i))
+
+biology["pred"] = biology["cluster"].map(top_stemmed)
+biology.to_csv("pred1.csv")
+
